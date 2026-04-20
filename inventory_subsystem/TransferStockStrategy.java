@@ -31,6 +31,7 @@ public class TransferStockStrategy {
         int expiredQuantity = 0;
         Iterator<InventoryBatch> expiryIterator = source.getBatches().iterator();
 
+        // Before transferring, clean up expired batches and deduct their quantity from total
         while (expiryIterator.hasNext()) {
             InventoryBatch batch = expiryIterator.next();
             if (batch.getExpiryTime() != null && batch.getExpiryTime().isBefore(now)) {
@@ -43,11 +44,13 @@ public class TransferStockStrategy {
             source.deductQuantity(expiredQuantity);
         }
 
+        // Check if sufficient stock is available 
         if (source.getTotalQuantity() < quantity) {
             exceptions.onInsufficientStock(productId, quantity, source.getTotalQuantity());
             return;
         }
 
+        // Sort the batches in FEFO
         source.getBatches().sort(
             policy == IssuingPolicy.FEFO
                 ? Comparator.comparing(
@@ -58,6 +61,7 @@ public class TransferStockStrategy {
                 : Comparator.comparing(InventoryBatch::getArrivalTime)
         );
 
+        // Get the destination and create new item if the product doesn't exist previously
         InventoryItem dest = repository.find(productId, toLocation);
         if (dest == null) {
             dest = new InventoryItem(productId, toLocation);
@@ -72,6 +76,7 @@ public class TransferStockStrategy {
             int moveQty = Math.min(available, remaining);
             String batchIdForTx;
 
+            // If the required quantity is equal to the batch quantity, move the entire batch
             if (moveQty == available) {
                 iterator.remove();
                 dest.addBatch(batch);
@@ -95,6 +100,7 @@ public class TransferStockStrategy {
 
             remaining -= moveQty;
 
+            // record the transaction
             if (repository instanceof InventoryRepository repo) {
                 repo.recordTransaction(
                     new StockTransaction(
@@ -122,11 +128,13 @@ public class TransferStockStrategy {
             }
         }
 
+        // After looping all batches, if quantity is not fulfilled trow error 
         if (remaining > 0) {
             exceptions.onInsufficientStock(productId, quantity, source.getTotalQuantity());
             return;
         }
 
+        // Update the versions and save
         source.setVersion(source.getVersion() + 1);
         dest.setVersion(dest.getVersion() + 1);
 
