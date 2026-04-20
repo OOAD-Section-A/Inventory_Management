@@ -14,18 +14,21 @@ public class AddStockStrategy {
                            String referenceType, String referenceId,
                            InventoryDataStore repository,
                            IssuingPolicy policy) {
-
-        if (!"GRN".equals(referenceType)) {
+        
+// Stock can be added only via a GRN. if its not GRN, the opertaion is rejected immediately
+        if (!"GRN".equals(referenceType)) {                       
             exceptions.onStockUpdateConflict(productId);
             return;
         }
 
         InventoryItem item = repository.find(productId, locationId);
-
+        
+// Check if stock already exists at that location. If yes, use it. If no, create a fresh one
         if (item == null) {
             item = new InventoryItem(productId, locationId);
         }
 
+// Create a new batch
         InventoryBatch batch = new InventoryBatch(
                 UUID.randomUUID().toString(),
                 productId,
